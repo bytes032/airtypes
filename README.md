@@ -80,6 +80,7 @@ The generated file exports:
 - `type` aliases via `z.infer`
 - `*Table` definitions with mappings + schema (and optional `recordSchema`)
 - `links` metadata for linked record fields (table IDs)
+- `parseRecord` helper to validate `{ id, fields }` in one place
 
 Example snippet:
 
@@ -95,6 +96,15 @@ export const myTableTable = {
     relatedItems: { tableId: 'tblLinked' },
   },
 } satisfies AirtableTableDefinition<MyTable>;
+```
+
+Use `parseRecord` to validate Airtable API records once and get typed fields:
+
+```ts
+import { parseRecord, myTableTable } from './airtable-types';
+
+const parsed = parseRecord(myTableTable, { id: record.id, fields: record.fields });
+const fields = parsed.fields; // fully typed
 ```
 
 ## Flags

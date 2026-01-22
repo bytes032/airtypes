@@ -87,6 +87,9 @@ const run = (): void => {
   if (!output.includes('recordSchema')) {
     throw new Error('Generated file missing recordSchema.');
   }
+  if (!output.includes('parseRecord')) {
+    throw new Error('Generated file missing parseRecord helper.');
+  }
 
   rmSync(tempDir, { recursive: true, force: true });
 };
