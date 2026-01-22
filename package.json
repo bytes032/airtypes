@@ -8,7 +8,7 @@
     "check": "biome check --write .",
     "lint": "biome check . && oxlint --type-aware --tsconfig tsconfig.json --config .oxlintrc.json .",
     "lint:fix": "biome check --write . && oxlint --type-aware --tsconfig tsconfig.json --config .oxlintrc.json --fix .",
-    "test": "bun tests/integration.test.ts",
+    "test": "node --import tsx tests/integration.test.ts",
     "generate": "tsx src/index.ts",
     "generate:bun": "bun run src/index.ts"
   },
