@@ -1,8 +1,39 @@
 {
   "name": "airtypes",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Generate Zod schemas and TypeScript types from Airtable bases.",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@9.15.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "airtypes": "dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "config.example.toml"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bytes032/airtypes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bytes032/airtypes/issues"
+  },
+  "homepage": "https://github.com/bytes032/airtypes#readme",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "format": "biome format --write .",
     "write": "biome check --write .",
@@ -11,12 +42,16 @@
     "lint:fix": "biome check --write . && oxlint --type-aware --tsconfig tsconfig.json --config .oxlintrc.json --fix .",
     "test": "node --import tsx tests/integration.test.ts",
     "generate": "tsx src/index.ts",
-    "generate:bun": "bun run src/index.ts"
+    "generate:bun": "bun run src/index.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "commander": "^12.1.0",
     "@iarna/toml": "^3.0.0",
     "consola": "^3.4.0",
+    "cosmiconfig": "^9.0.0",
     "picocolors": "^1.1.0",
     "zod": "^4.3.5"
   },
@@ -25,6 +60,7 @@
     "@types/node": "^25.0.10",
     "oxlint": "^1.41.0",
     "oxlint-tsgolint": "^0.11.1",
+    "tsup": "^8.5.0",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   }

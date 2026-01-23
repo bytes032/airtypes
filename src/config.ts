@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import toml from '@iarna/toml';
+import { cosmiconfig } from 'cosmiconfig';
 import { z } from 'zod';
-import { resolveConfigPath } from './cli-utils.js';
 import type { GeneratorConfig, ParsedConfig } from './types.js';
 
 const BaseConfigSchema = z.object({
@@ -19,10 +19,7 @@ const ConfigSchema = z.object({
   bases: z.array(BaseConfigSchema).min(1).optional(),
 });
 
-const parseToml = async (raw: string): Promise<unknown> => {
-  const toml = await import('@iarna/toml');
-  return toml.parse(raw);
-};
+export type RawConfig = z.infer<typeof ConfigSchema>;
 
 const stripSymbolKeys = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -39,22 +36,64 @@ const stripSymbolKeys = (value: unknown): unknown => {
   return value;
 };
 
-export const loadConfig = async (
+const explorer = cosmiconfig('airtypes', {
+  searchPlaces: [
+    'package.json',
+    '.airtypesrc',
+    '.airtypesrc.json',
+    '.airtypesrc.yaml',
+    '.airtypesrc.yml',
+    '.airtypesrc.js',
+    '.airtypesrc.cjs',
+    'airtypes.config.js',
+    'airtypes.config.cjs',
+    'airtypes.config.mjs',
+    'airtypes.config.json',
+    'airtypes.config.yaml',
+    'airtypes.config.yml',
+    'airtypes.config.toml',
+    'config.toml',
+  ],
+  loaders: {
+    '.toml': (_filepath, content) => {
+      const parsed = toml.parse(content);
+      return stripSymbolKeys(parsed) as Record<string, unknown>;
+    },
+  },
+});
+
+export type ConfigSource = {
+  config: RawConfig;
+  filepath?: string;
+  configDir: string;
+};
+
+export const loadConfigSource = async (options: { config?: string; configFile?: string }): Promise<ConfigSource> => {
+  const explicitPath =
+    options.config ?? options.configFile ?? process.env.AIRTYPES_CONFIG ?? process.env.AIRTYPE_CONFIG;
+
+  const result = explicitPath ? await explorer.load(explicitPath) : await explorer.search(process.cwd());
+
+  if (!result || result.isEmpty) {
+    throw new Error('Config not found. Provide --config or add an airtypes config file.');
+  }
+
+  const config = ConfigSchema.parse(stripSymbolKeys(result.config));
+  const configDir = result.filepath ? dirname(result.filepath) : process.cwd();
+
+  return {
+    config,
+    filepath: result.filepath ?? undefined,
+    configDir,
+  };
+};
+
+export const loadConfigFromOptions = async (
   repoRoot: string,
-  options: { configPath: string; out?: string },
+  options: { config?: string; configFile?: string; out?: string },
 ): Promise<ParsedConfig> => {
-  const configPath = options.configPath;
-  if (!existsSync(configPath)) {
-    throw new Error(`Config file not found: ${configPath}`);
-  }
-
-  const raw = readFileSync(configPath, 'utf8').trim();
-  if (!raw) {
-    throw new Error(`Config file is empty: ${configPath}`);
-  }
-
-  const parsed = await parseToml(raw);
-  const config = ConfigSchema.parse(stripSymbolKeys(parsed));
+  const source = await loadConfigSource(options);
+  const config = source.config;
   const apiKey =
     config.api_key ??
     (config.api_key_env ? process.env[config.api_key_env] : undefined) ??
@@ -75,25 +114,17 @@ export const loadConfig = async (
       : null;
 
   if (!bases || bases.length === 0) {
-    throw new Error('Missing bases configuration. Set bases in the TOML config.');
+    throw new Error('Missing bases configuration. Set bases in the config.');
   }
+
+  const outputBase = options.out ? repoRoot : source.configDir;
+  const output = options.out
+    ? resolve(repoRoot, options.out)
+    : resolve(outputBase, config.output ?? 'airtable-types.ts');
 
   return {
     apiKey,
-    output: options.out ? resolve(repoRoot, options.out) : (config.output ?? 'airtable-types.ts'),
+    output,
     bases,
   };
-};
-
-export const loadConfigFromOptions = async (
-  repoRoot: string,
-  options: { config?: string; configFile?: string; out?: string },
-): Promise<ParsedConfig> => {
-  const configPath = resolveConfigPath(repoRoot, options);
-  return loadConfig(repoRoot, { configPath, out: options.out });
-};
-
-export const parseRawConfig = async (raw: string): Promise<unknown> => {
-  const parsed = await parseToml(raw);
-  return ConfigSchema.parse(stripSymbolKeys(parsed));
 };

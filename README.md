@@ -1,16 +1,62 @@
 # airtypes
 
-Fast Zod schemas and TypeScript types from Airtable bases. Built for terminals and CI.
+Generate Zod schemas and TypeScript types from Airtable bases. Built for terminals, CI, and codegen workflows.
+
+## Features
+
+- Zod schemas and TypeScript types per table
+- `*Table` definitions with Airtable field mappings
+- Optional `recordSchema` + `parseRecord` helper
+- `requiredFields` support for stricter list queries
+- Config discovery + CLI flags
+
+## Requirements
+
+- Node.js >= 24
 
 ## Install
 
 ```sh
-pnpm install
+pnpm add -D airtypes
 ```
 
-## Quick Start
+## Usage
 
-1) Copy `config.example.toml` to `config.toml` and edit it:
+```sh
+# Generate with config discovery
+npx airtypes generate
+
+# Explicit config path
+npx airtypes generate --config ./config.toml
+
+# Override output path
+npx airtypes generate --out ./types/airtable-types.ts
+
+# Validate config only
+npx airtypes validate
+
+# Print effective config (secrets redacted)
+npx airtypes print-config --json
+```
+
+## Configuration
+
+### Discovery
+
+airtypes uses cosmiconfig. It searches (in order) from the current working directory for:
+
+- `package.json` (under `airtypes` key)
+- `.airtypesrc`, `.airtypesrc.json`, `.airtypesrc.yaml`, `.airtypesrc.yml`, `.airtypesrc.js`, `.airtypesrc.cjs`
+- `airtypes.config.js`, `airtypes.config.cjs`, `airtypes.config.mjs`, `airtypes.config.json`, `airtypes.config.yaml`, `airtypes.config.yml`, `airtypes.config.toml`
+- `config.toml`
+
+You can also force a config path:
+
+```sh
+npx airtypes generate --config ./config.toml
+```
+
+### Example `config.toml`
 
 ```toml
 api_key_env = "AIRTABLE_API_KEY"
@@ -19,74 +65,30 @@ output = "airtable-types.ts"
 [[bases]]
 name = "my-base"
 base_id = "app1234"
-```
-
-2) Run:
-
-```sh
-pnpm run generate
-```
-
-Default output is `airtable-types.ts` in the repo root. Override with `output` or `--out`.
-
-## Usage
-
-```sh
-# Default (generate)
-pnpm run generate
-
-# Explicit generate
-node --import tsx src/index.ts generate
-
-# Validate config only
-node --import tsx src/index.ts validate
-
-# Print effective config (secrets redacted)
-node --import tsx src/index.ts print-config --json
-
-# Custom config path
-node --import tsx src/index.ts --config ./tools/airtable.toml
-
-# Override output path
-node --import tsx src/index.ts --out ./types/airtable-types.ts
-
-# Dry run
-node --import tsx src/index.ts --dry-run --json
-```
-
-## Config
-
-Required:
-- `api_key` or `api_key_env`
-- at least one `[[bases]]` block
-
-Optional per-base keys:
-
-```toml
-[[bases]]
-name = "my-base"
-base_id = "app1234"
 # table_ids = ["tbl123", "tbl456"]
 # view_ids = ["viw123", "viw456"]
 # required_fields = { "My Table" = ["Primary Field", "Status"] }
 ```
 
-`required_fields` marks fields as non-optional in the generated schema and adds a `requiredFields` list to the table
-definition. Keys can be table names or table IDs; values can be Airtable field names, field IDs, or the generated
-camelCase field keys.
+### API key
 
-Precedence (high → low): flags → environment → config file.
+Provide an API key via one of:
+
+- `api_key` in config
+- `api_key_env` in config (recommended)
+- `AIRTABLE_API_KEY` env var
 
 ## Output
 
 The generated file exports:
+
 - `*Schema` Zod objects per table
 - `type` aliases via `z.infer`
-- `*Table` definitions with mappings + schema (and optional `recordSchema`)
-- `links` metadata for linked record fields (table IDs)
-- `parseRecord` helper to validate `{ id, fields }` in one place
+- `*Table` definitions (mappings + schema)
+- optional `recordSchema` and `parseRecord`
+- `links` metadata for linked record fields
 
-Example snippet:
+Example table snippet:
 
 ```ts
 export const myTableTable = {
@@ -94,6 +96,7 @@ export const myTableTable = {
   baseId: 'app...',
   tableId: 'tbl...',
   mappings: { relatedItems: 'fld...' },
+  requiredFields: ['name', 'status'],
   schema: MyTableSchema,
   recordSchema: MyTableRecordSchema,
   links: {
@@ -105,7 +108,7 @@ export const myTableTable = {
 Use `parseRecord` to validate Airtable API records once and get typed fields:
 
 ```ts
-import { parseRecord, myTableTable } from './airtable-types';
+import { parseRecord, myTableTable } from './airtable-types.js';
 
 const parsed = parseRecord(myTableTable, { id: record.id, fields: record.fields });
 const fields = parsed.fields; // fully typed
@@ -113,7 +116,7 @@ const fields = parsed.fields; // fully typed
 
 ## Using with airtool
 
-`airtool` can consume the generated table definitions directly for typed CRUD helpers:
+`airtool` consumes the generated table definitions directly:
 
 ```ts
 import { createAirtableClient, pickFields } from 'airtool';
@@ -130,36 +133,29 @@ const records = await table.fetchAllRecords({
 });
 ```
 
-If you set `required_fields` in `config.toml`, airtypes adds a `requiredFields` list per table, and airtool will always
-include those fields in typed list queries.
+If you set `required_fields` in the config, airtypes adds a `requiredFields` list per table, and airtool automatically
+includes those fields in typed list queries.
 
 ## Flags
 
-Common flags:
-- `-c, --config <path>` config TOML (default `config.toml`)
+- `-c, --config <path>` config file path
 - `--config-file <path>` alias for `--config`
 - `-o, --out <path>` override output path
 - `--no-links` skip linked-record metadata
 - `--no-record-schema` skip recordSchema helpers
 - `-n, --dry-run` render output without writing
 - `--json` machine output
-- `-q, --quiet` minimal output
-- `-v, --verbose` verbose logging
-- `--no-color` disable color output
+- `--plain` compact JSON
+- `-q, --quiet` suppress non-error output
+- `-v, --verbose` verbose output
+- `--no-color` disable color
 
-## Exit Codes
+## Exit codes
 
 - `0` success
-- `1` generic failure (IO/network)
-- `2` invalid config/usage
+- `1` runtime or API error
+- `2` CLI usage error
 
-## Notes
+## License
 
-- Output types use optional fields because Airtable omits empty values in API responses.
-- Date/datetime fields are emitted as strings (ISO 8601).
-- Linked records are emitted as `string[]` plus `links` metadata (IDs only).
-
-## Troubleshooting
-
-- Missing API key: set `api_key` in `config.toml` or `api_key_env` + environment variable.
-- Empty output: confirm base/table IDs and view filters in config.
+MIT

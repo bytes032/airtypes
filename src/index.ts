@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
-import { emitJson, formatJson, getPackageVersion, resolveConfigPath } from './cli-utils.js';
-import { loadConfigFromOptions, parseRawConfig } from './config.js';
+import { emitJson, formatJson, getPackageVersion } from './cli-utils.js';
+import { loadConfigFromOptions, loadConfigSource } from './config.js';
 import { createLogger } from './logger.js';
 import type {
   AirtableField,
@@ -622,10 +622,8 @@ const validateConfig = async (options: CliOptions): Promise<void> => {
 };
 
 const printConfig = async (options: CliOptions): Promise<void> => {
-  const repoRoot = process.cwd();
-  const configPath = resolveConfigPath(repoRoot, options);
-  const raw = readFileSync(configPath, 'utf8').trim();
-  const config = await parseRawConfig(raw);
+  const source = await loadConfigSource(options);
+  const config = source.config;
   const sanitized = {
     ...config,
     api_key: 'api_key' in config && config.api_key ? '[redacted]' : undefined,
@@ -710,8 +708,8 @@ const main = async () => {
     await program.parseAsync(process.argv);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const code = typeof (error as { code?: string }).code === 'string' ? (error as { code?: string }).code : '';
-    const exitCode = code.startsWith('commander.') ? 2 : 1;
+    const code = (error as { code?: string }).code;
+    const exitCode = typeof code === 'string' && code.startsWith('commander.') ? 2 : 1;
     logger.error(message);
     process.exit(exitCode);
   }
