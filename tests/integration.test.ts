@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import toml from '@iarna/toml';
+import type { z } from 'zod';
 
 const rootDir = resolve(new URL('.', import.meta.url).pathname, '..');
 const configPath = resolve(rootDir, 'config.toml');
@@ -116,14 +117,53 @@ const run = async (): Promise<void> => {
     record: { id: string; fields: unknown },
   ) => { id: string; fields: unknown };
 
-  const parsedRecord = parseRecord(table, { id: 'rec_test', fields: {} });
+  const buildFields = () => {
+    if (!table) return {};
+    const requiredFields = Array.isArray((table as { requiredFields?: string[] }).requiredFields)
+      ? (table as { requiredFields?: string[] }).requiredFields
+      : [];
+    if (requiredFields.length === 0) {
+      return {};
+    }
+
+    const tableSchema = table.schema as z.ZodTypeAny;
+    const shapeSource = (tableSchema as unknown as { shape?: unknown; _def?: unknown }).shape;
+    const shape =
+      typeof shapeSource === 'function' ? (shapeSource as () => Record<string, z.ZodTypeAny>)() : shapeSource;
+
+    const makeValue = (schema: z.ZodTypeAny): unknown => {
+      const candidates: unknown[] = [undefined, '', 'test', 0, 1, false, true, [], {}, { id: 'rec_dummy' }, null];
+      for (const candidate of candidates) {
+        const result = schema.safeParse(candidate);
+        if (result.success) {
+          return candidate;
+        }
+      }
+      throw new Error(`Unable to satisfy required field schema for ${schema._def?.typeName ?? 'unknown'}`);
+    };
+
+    const fields: Record<string, unknown> = {};
+    for (const field of requiredFields) {
+      const fieldSchema =
+        shape && typeof shape === 'object' ? (shape as Record<string, z.ZodTypeAny>)[field] : undefined;
+      if (!fieldSchema) {
+        throw new Error(`Required field "${field}" not found in schema shape.`);
+      }
+      fields[field] = makeValue(fieldSchema);
+    }
+
+    return fields;
+  };
+
+  const baseFields = buildFields();
+  const parsedRecord = parseRecord(table, { id: 'rec_test', fields: baseFields });
   if (parsedRecord.id !== 'rec_test' || typeof parsedRecord.fields !== 'object') {
     throw new Error('parseRecord did not return expected shape.');
   }
 
   let threw = false;
   try {
-    parseRecord(table, { id: 'rec_test', fields: { __invalid_field__: 'oops' } });
+    parseRecord(table, { id: 'rec_test', fields: { ...baseFields, __invalid_field__: 'oops' } });
   } catch {
     threw = true;
   }
