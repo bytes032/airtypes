@@ -69,12 +69,12 @@ name = "my-base"
 base_id = "app1234"
 # table_ids = ["tbl123", "tbl456"]
 # view_ids = ["viw123", "viw456"]
-# optional_fields = { "My Table" = ["Optional Notes"] }
+# required_fields = { "My Table" = ["Primary Field"] }
 ```
 
-`optional_fields` marks the fields that remain optional; all other fields in that table become required. It also emits
-`requiredFields` for SDK helpers. Keys can be table names or table IDs; values can be Airtable field names, field IDs,
-or the generated camelCase field keys.
+`required_fields` marks fields as non-optional in the generated schema and adds a `requiredFields` list to the table
+definition. Keys can be table names or table IDs; values can be Airtable field names, field IDs, or the generated
+camelCase field keys.
 
 Precedence (high → low): flags → environment → config file.
 

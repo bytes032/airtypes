@@ -38,7 +38,7 @@ type GeneratorConfig = {
   baseId: string;
   tableIds?: string[];
   viewIds?: string[];
-  optionalFields?: Record<string, string[]>;
+  requiredFields?: Record<string, string[]>;
 };
 
 type ParsedConfig = {
@@ -52,7 +52,7 @@ const BaseConfigSchema = z.object({
   base_id: z.string().trim().min(1),
   table_ids: z.array(z.string().trim().min(1)).optional(),
   view_ids: z.array(z.string().trim().min(1)).optional(),
-  optional_fields: z.record(z.array(z.string().trim().min(1))).optional(),
+  required_fields: z.record(z.array(z.string().trim().min(1))).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -107,7 +107,7 @@ const loadConfig = async (repoRoot: string, options: CliOptions): Promise<Parsed
           baseId: base.base_id,
           tableIds: base.table_ids && base.table_ids.length > 0 ? base.table_ids : undefined,
           viewIds: base.view_ids && base.view_ids.length > 0 ? base.view_ids : undefined,
-          optionalFields: base.optional_fields ?? undefined,
+          requiredFields: base.required_fields ?? undefined,
         }))
       : null;
 
@@ -549,10 +549,8 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     };
   });
 
-  const optionalTokens = config.optionalFields?.[table.id] ?? config.optionalFields?.[table.name];
-  const hasOptionalConfig = Array.isArray(optionalTokens);
+  const requiredTokens = config.requiredFields?.[table.id] ?? config.requiredFields?.[table.name] ?? [];
   const requiredFields = new Set<string>();
-  const optionalFields = new Set<string>();
   const tokenMap = new Map<string, string>();
   for (const field of fields) {
     tokenMap.set(field.id, field.jsName);
@@ -560,18 +558,13 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     tokenMap.set(field.jsName, field.jsName);
   }
 
-  if (hasOptionalConfig) {
-    for (const token of optionalTokens) {
+  if (requiredTokens.length > 0) {
+    for (const token of requiredTokens) {
       const jsName = tokenMap.get(token);
       if (!jsName) {
-        throw new Error(`Unknown optional field "${token}" for table "${table.name}" (${table.id})`);
+        throw new Error(`Unknown required field "${token}" for table "${table.name}" (${table.id})`);
       }
-      optionalFields.add(jsName);
-    }
-    for (const field of fields) {
-      if (!optionalFields.has(field.jsName)) {
-        requiredFields.add(field.jsName);
-      }
+      requiredFields.add(jsName);
     }
   }
 
@@ -579,8 +572,8 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     if (!field.zodSpec) {
       return field;
     }
-    if (hasOptionalConfig) {
-      const shouldBeOptional = optionalFields.has(field.jsName);
+    if (requiredFields.size > 0) {
+      const shouldBeOptional = !requiredFields.has(field.jsName);
       return {
         ...field,
         zodSpec: { ...field.zodSpec, optional: shouldBeOptional },
