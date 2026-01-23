@@ -1,7 +1,17 @@
 # AGENTS.md
 
+## Global Rules
+
+## Scope
+
+- Follow the closest `AGENTS.md`; nested files override or extend these rules.
+- Keep instructions concise and avoid duplicating subproject rules.
+
 ## Coding Style & Naming Conventions
 
+- Language: TypeScript (ESM). Prefer strict typing; avoid any.
+- Formatting/linting via biome and oxlint; run pnpm format and pnpm write before commits.
+- Add brief code comments for tricky or non-obvious logic.
 - Prefer Bun for TypeScript execution (scripts, dev, tests): bun <file.ts> / bunx <tool>.
 - Avoid fallbacks for unrealistic cases.
 - Never assume backwards compatibility is required.
