@@ -2,140 +2,35 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { z } from 'zod';
+import { emitJson, formatJson, getPackageVersion, resolveConfigPath } from './cli-utils.js';
+import { loadConfigFromOptions, parseRawConfig } from './config.js';
+import { createLogger } from './logger.js';
+import type {
+  AirtableField,
+  AirtableFieldOptions,
+  AirtableTable,
+  AirtableView,
+  BaseSchema,
+  CliOptions,
+  GeneratorConfig,
+} from './types.js';
 
-type AirtableField = {
-  id: string;
-  name: string;
-  type: string;
-  options?: Record<string, unknown> | null;
+const defaultOptions: CliOptions = {
+  config: undefined,
+  configFile: undefined,
+  out: undefined,
+  color: true,
+  json: false,
+  plain: false,
+  quiet: false,
+  verbose: false,
+  noLinks: false,
+  noRecordSchema: false,
+  dryRun: false,
 };
 
-type AirtableFieldOptions = {
-  linkedTableId?: string;
-};
-
-type AirtableView = {
-  id: string;
-  name: string;
-  type: string;
-  visibleFieldIds?: string[];
-};
-
-type AirtableTable = {
-  id: string;
-  name: string;
-  fields: AirtableField[];
-  views: AirtableView[];
-};
-
-type BaseSchema = { tables: AirtableTable[] };
-
-type GeneratorConfig = {
-  baseName: string;
-  baseId: string;
-  tableIds?: string[];
-  viewIds?: string[];
-  requiredFields?: Record<string, string[]>;
-};
-
-type ParsedConfig = {
-  apiKey: string;
-  output: string;
-  bases: GeneratorConfig[];
-};
-
-const BaseConfigSchema = z.object({
-  name: z.string().trim().min(1),
-  base_id: z.string().trim().min(1),
-  table_ids: z.array(z.string().trim().min(1)).optional(),
-  view_ids: z.array(z.string().trim().min(1)).optional(),
-  required_fields: z.record(z.string(), z.array(z.string().trim().min(1))).optional(),
-});
-
-const ConfigSchema = z.object({
-  api_key: z.string().trim().min(1).optional(),
-  api_key_env: z.string().trim().min(1).optional(),
-  output: z.string().trim().min(1).optional(),
-  bases: z.array(BaseConfigSchema).min(1).optional(),
-});
-
-const parseToml = async (raw: string): Promise<unknown> => {
-  const toml = await import('@iarna/toml');
-  return toml.parse(raw);
-};
-
-const stripSymbolKeys = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(stripSymbolKeys);
-  }
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const cleaned: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(record)) {
-      cleaned[key] = stripSymbolKeys(entry);
-    }
-    return cleaned;
-  }
-  return value;
-};
-
-type CliOptions = {
-  configFile: string;
-  out?: string;
-  json: boolean;
-  plain: boolean;
-  quiet: boolean;
-  verbose: boolean;
-  noLinks: boolean;
-  noRecordSchema: boolean;
-  dryRun: boolean;
-};
-
-const loadConfig = async (repoRoot: string, options: CliOptions): Promise<ParsedConfig> => {
-  const configPath = resolve(repoRoot, options.configFile);
-  if (!existsSync(configPath)) {
-    throw new Error(`Config file not found: ${configPath}`);
-  }
-
-  const raw = readFileSync(configPath, 'utf8').trim();
-  if (!raw) {
-    throw new Error(`Config file is empty: ${configPath}`);
-  }
-
-  const parsed = await parseToml(raw);
-  const config = ConfigSchema.parse(stripSymbolKeys(parsed));
-  const apiKey =
-    config.api_key ??
-    (config.api_key_env ? process.env[config.api_key_env] : undefined) ??
-    process.env.AIRTABLE_API_KEY;
-  if (!apiKey) {
-    throw new Error('Missing api key. Set api_key, api_key_env, or AIRTABLE_API_KEY in the environment.');
-  }
-
-  const bases =
-    config.bases && config.bases.length > 0
-      ? config.bases.map((base) => ({
-          baseName: base.name,
-          baseId: base.base_id,
-          tableIds: base.table_ids && base.table_ids.length > 0 ? base.table_ids : undefined,
-          viewIds: base.view_ids && base.view_ids.length > 0 ? base.view_ids : undefined,
-          requiredFields: base.required_fields ?? undefined,
-        }))
-      : null;
-
-  if (!bases || bases.length === 0) {
-    throw new Error('Missing bases configuration. Set bases in the TOML config.');
-  }
-
-  return {
-    apiKey,
-    output: options.out ? resolve(repoRoot, options.out) : (config.output ?? 'airtable-types.ts'),
-    bases,
-  };
-};
+let logger = createLogger(defaultOptions);
 
 const toWords = (input: string): string[] => {
   const withSpaces = input
@@ -211,7 +106,7 @@ const escapeIdentifier = (name: string): string => {
 
   if (/^\d+$/.test(sanitized)) {
     invalidIdentifierCount += 1;
-    console.warn(
+    logger.warn(
       `Invalid identifier "${name}" became purely numeric after sanitization ("${sanitized}"). Using default identifier "${DEFAULT_IDENTIFIER}${invalidIdentifierCount}".`,
     );
     return `${DEFAULT_IDENTIFIER}${invalidIdentifierCount}`;
@@ -226,7 +121,7 @@ const escapeIdentifier = (name: string): string => {
     const validStartIndex = pascal.search(/[$A-Za-z]/);
     if (validStartIndex === -1) {
       invalidIdentifierCount += 1;
-      console.warn(
+      logger.warn(
         `Invalid identifier "${name}" contains no valid starting character after sanitization. Using default identifier "${DEFAULT_IDENTIFIER}${invalidIdentifierCount}".`,
       );
       return `${DEFAULT_IDENTIFIER}${invalidIdentifierCount}`;
@@ -241,7 +136,7 @@ const escapeIdentifier = (name: string): string => {
 
     if (!isValidJsIdentifier(pascal) || pascal.length === 0) {
       invalidIdentifierCount += 1;
-      console.warn(
+      logger.warn(
         `Invalid identifier "${name}" could not be salvaged. Using default identifier "${DEFAULT_IDENTIFIER}${invalidIdentifierCount}".`,
       );
       return `${DEFAULT_IDENTIFIER}${invalidIdentifierCount}`;
@@ -345,7 +240,7 @@ const zodSpecForAirtableType = (field: AirtableField): ZodSpec | null => {
       throw new Error(`Invalid ${field.type} field (no options.result): ${field.id}`);
     }
     default:
-      console.warn(`Could not convert Airtable type "${field.type}" to a Zod schema for field ${field.id}`);
+      logger.warn(`Could not convert Airtable type "${field.type}" to a Zod schema for field ${field.id}`);
       return null;
   }
 };
@@ -670,9 +565,8 @@ type GenerateResult = {
 };
 
 const generateTypes = async (options: CliOptions): Promise<GenerateResult> => {
-  const scriptDir = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = dirname(scriptDir);
-  const config = await loadConfig(repoRoot, options);
+  const repoRoot = process.cwd();
+  const config = await loadConfigFromOptions(repoRoot, options);
 
   const outputPath = resolve(repoRoot, config.output);
   const outputDir = dirname(outputPath);
@@ -680,9 +574,7 @@ const generateTypes = async (options: CliOptions): Promise<GenerateResult> => {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  if (!options.quiet) {
-    console.log(`Generating Zod definitions for ${config.bases.length} Airtable bases...`);
-  }
+  logger.info(`Generating Zod definitions for ${config.bases.length} Airtable bases...`);
 
   const generatedBlocks: string[] = [];
   const summary: Array<{ name: string; tableCount: number }> = [];
@@ -693,9 +585,7 @@ const generateTypes = async (options: CliOptions): Promise<GenerateResult> => {
   };
 
   for (const baseConfig of config.bases) {
-    if (!options.quiet) {
-      console.log(`Fetching schema for ${baseConfig.baseName} (${baseConfig.baseId})...`);
-    }
+    logger.debug(`Fetching schema for ${baseConfig.baseName} (${baseConfig.baseId})...`);
     const tables = await getBaseSchema(baseConfig.baseId, config.apiKey);
     const resolvedTableIds = resolveTableIds(tables, baseConfig.tableIds);
     const scopedTables = filterTablesById(tables, resolvedTableIds);
@@ -716,10 +606,8 @@ const generateTypes = async (options: CliOptions): Promise<GenerateResult> => {
     writeFileSync(outputPath, contents, 'utf8');
   }
 
-  if (!options.quiet) {
-    const suffix = options.dryRun ? ' (dry-run)' : '';
-    console.log(`Generated Airtable types: ${outputPath}${suffix}`);
-  }
+  const suffix = options.dryRun ? ' (dry-run)' : '';
+  logger.info(`Generated Airtable types: ${outputPath}${suffix}`);
 
   return {
     outputPath,
@@ -729,54 +617,57 @@ const generateTypes = async (options: CliOptions): Promise<GenerateResult> => {
 };
 
 const validateConfig = async (options: CliOptions): Promise<void> => {
-  const scriptDir = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = dirname(scriptDir);
-  await loadConfig(repoRoot, options);
+  const repoRoot = process.cwd();
+  await loadConfigFromOptions(repoRoot, options);
 };
 
 const printConfig = async (options: CliOptions): Promise<void> => {
-  const scriptDir = dirname(fileURLToPath(import.meta.url));
-  const repoRoot = dirname(scriptDir);
-  const configPath = resolve(repoRoot, options.configFile);
+  const repoRoot = process.cwd();
+  const configPath = resolveConfigPath(repoRoot, options);
   const raw = readFileSync(configPath, 'utf8').trim();
-  const parsed = await parseToml(raw);
-  const config = ConfigSchema.parse(parsed);
+  const config = await parseRawConfig(raw);
   const sanitized = {
     ...config,
-    api_key: config.api_key ? '[redacted]' : undefined,
+    api_key: 'api_key' in config && config.api_key ? '[redacted]' : undefined,
   };
   if (options.json) {
-    console.log(JSON.stringify(sanitized, null, options.plain ? 0 : 2));
+    emitJson(sanitized, options);
     return;
   }
-  const output = options.plain ? JSON.stringify(sanitized) : JSON.stringify(sanitized, null, 2);
-  console.log(output);
+  const output = formatJson(sanitized, options);
+  process.stdout.write(`${output}\n`);
 };
 
 const main = async () => {
   const program = new Command();
   program
-    .name('airtable-typegen')
+    .name('airtypes')
     .description('Generate Zod schemas and TypeScript types from Airtable bases.')
-    .option('-c, --config-file <path>', 'Path to config TOML', 'config.toml')
+    .option('-c, --config <path>', 'Path to config TOML')
+    .option('--config-file <path>', 'Alias for --config')
     .option('-o, --out <path>', 'Override output path')
-    .option('--json', 'Emit machine-readable output', false)
-    .option('--plain', 'Plain text output (no color)', false)
+    .option('--json', 'Emit machine-readable output to stdout', false)
+    .option('--plain', 'Emit compact JSON (no whitespace)', false)
+    .option('--no-color', 'Disable color output')
     .option('-q, --quiet', 'Suppress non-error output', false)
     .option('-v, --verbose', 'Verbose output', false)
     .option('--no-links', 'Do not emit links metadata', false)
     .option('--no-record-schema', 'Do not emit recordSchema helpers', false)
     .option('-n, --dry-run', 'Do not write output file', false)
-    .version('0.1.0');
+    .showHelpAfterError()
+    .showSuggestionAfterError()
+    .version(getPackageVersion(), '-V, --version', 'Output the version number');
 
   program
     .command('generate')
     .description('Generate types from the config file')
     .action(async () => {
-      const opts = program.opts();
-      const result = await generateTypes(opts as CliOptions);
-      if (opts.json) {
-        console.log(JSON.stringify(result));
+      const opts = program.opts<CliOptions>();
+      const resolved = { ...defaultOptions, ...opts };
+      logger = createLogger(resolved);
+      const result = await generateTypes(resolved);
+      if (resolved.json) {
+        emitJson(result, resolved);
       }
     });
 
@@ -784,38 +675,50 @@ const main = async () => {
     .command('validate')
     .description('Validate config file and exit')
     .action(async () => {
-      const opts = program.opts();
-      await validateConfig(opts as CliOptions);
-      if (!opts.quiet) {
-        console.log('Config is valid.');
+      const opts = program.opts<CliOptions>();
+      const resolved = { ...defaultOptions, ...opts };
+      logger = createLogger(resolved);
+      await validateConfig(resolved);
+      if (resolved.json) {
+        emitJson({ valid: true }, resolved);
+        return;
       }
+      logger.info('Config is valid.');
     });
 
   program
     .command('print-config')
     .description('Print effective config (secrets redacted)')
     .action(async () => {
-      const opts = program.opts();
-      await printConfig(opts as CliOptions);
+      const opts = program.opts<CliOptions>();
+      const resolved = { ...defaultOptions, ...opts };
+      logger = createLogger(resolved);
+      await printConfig(resolved);
     });
 
   program.action(async () => {
-    const opts = program.opts();
-    const result = await generateTypes(opts as CliOptions);
-    if (opts.json) {
-      console.log(JSON.stringify(result));
+    const opts = program.opts<CliOptions>();
+    const resolved = { ...defaultOptions, ...opts };
+    logger = createLogger(resolved);
+    const result = await generateTypes(resolved);
+    if (resolved.json) {
+      emitJson(result, resolved);
     }
   });
 
   try {
     await program.parseAsync(process.argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    const message = error instanceof Error ? error.message : String(error);
+    const code = typeof (error as { code?: string }).code === 'string' ? (error as { code?: string }).code : '';
+    const exitCode = code.startsWith('commander.') ? 2 : 1;
+    logger.error(message);
+    process.exit(exitCode);
   }
 };
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error(message);
   process.exit(1);
 });

@@ -1,6 +1,5 @@
 # airtypes
 
-Schema — Airtable + CLI
 Fast Zod schemas and TypeScript types from Airtable bases. Built for terminals and CI.
 
 ## Install
@@ -46,7 +45,7 @@ node --import tsx src/index.ts validate
 node --import tsx src/index.ts print-config --json
 
 # Custom config path
-node --import tsx src/index.ts --config-file ./tools/airtable.toml
+node --import tsx src/index.ts --config ./tools/airtable.toml
 
 # Override output path
 node --import tsx src/index.ts --out ./types/airtable-types.ts
@@ -137,13 +136,16 @@ include those fields in typed list queries.
 ## Flags
 
 Common flags:
-- `-c, --config-file <path>` config TOML (default `config.toml`)
+- `-c, --config <path>` config TOML (default `config.toml`)
+- `--config-file <path>` alias for `--config`
 - `-o, --out <path>` override output path
 - `--no-links` skip linked-record metadata
 - `--no-record-schema` skip recordSchema helpers
 - `-n, --dry-run` render output without writing
 - `--json` machine output
 - `-q, --quiet` minimal output
+- `-v, --verbose` verbose logging
+- `--no-color` disable color output
 
 ## Exit Codes
 
