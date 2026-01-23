@@ -11,10 +11,10 @@ pnpm install
 
 ## Quick Start
 
-1) Create `config.toml`:
+1) Copy `config.example.toml` to `config.toml` and edit it:
 
 ```toml
-api_key = "pat1234"
+api_key_env = "AIRTABLE_API_KEY"
 output = "airtable-types.ts"
 
 [[bases]]
@@ -69,7 +69,7 @@ name = "my-base"
 base_id = "app1234"
 # table_ids = ["tbl123", "tbl456"]
 # view_ids = ["viw123", "viw456"]
-# required_fields = { "My Table" = ["Primary Field"] }
+# required_fields = { "My Table" = ["Primary Field", "Status"] }
 ```
 
 `required_fields` marks fields as non-optional in the generated schema and adds a `requiredFields` list to the table

@@ -1,7 +1,7 @@
 node_modules
-config.toml
 airtable-types.ts
 .vscode/*
+config.toml
 
 # Output
 f/types/airtable-types.ts

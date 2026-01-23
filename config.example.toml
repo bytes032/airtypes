@@ -1,0 +1,8 @@
+api_key_env = "AIRTABLE_API_KEY"
+output = "airtable-types.ts"
+
+[[bases]]
+name = "my-base"
+base_id = "app1234"
+# table_ids = ["tbl123", "tbl456"]
+# view_ids = ["viw123", "viw456"]

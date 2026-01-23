@@ -52,7 +52,7 @@ const BaseConfigSchema = z.object({
   base_id: z.string().trim().min(1),
   table_ids: z.array(z.string().trim().min(1)).optional(),
   view_ids: z.array(z.string().trim().min(1)).optional(),
-  required_fields: z.record(z.array(z.string().trim().min(1))).optional(),
+  required_fields: z.record(z.string(), z.array(z.string().trim().min(1))).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -65,6 +65,21 @@ const ConfigSchema = z.object({
 const parseToml = async (raw: string): Promise<unknown> => {
   const toml = await import('@iarna/toml');
   return toml.parse(raw);
+};
+
+const stripSymbolKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stripSymbolKeys);
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(record)) {
+      cleaned[key] = stripSymbolKeys(entry);
+    }
+    return cleaned;
+  }
+  return value;
 };
 
 type CliOptions = {
@@ -91,7 +106,7 @@ const loadConfig = async (repoRoot: string, options: CliOptions): Promise<Parsed
   }
 
   const parsed = await parseToml(raw);
-  const config = ConfigSchema.parse(parsed);
+  const config = ConfigSchema.parse(stripSymbolKeys(parsed));
   const apiKey =
     config.api_key ??
     (config.api_key_env ? process.env[config.api_key_env] : undefined) ??
