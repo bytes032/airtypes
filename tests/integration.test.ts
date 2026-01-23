@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import toml from '@iarna/toml';
@@ -82,9 +81,7 @@ const run = async (): Promise<void> => {
     throw new Error('Generated file missing table exports.');
   }
 
-  const tableWithLinksMatch = output.match(
-    /export const (\w+Table)\s*=\s*\{[\s\S]*?\n\s*links:\s*\{/,
-  );
+  const tableWithLinksMatch = output.match(/export const (\w+Table)\s*=\s*\{[\s\S]*?\n\s*links:\s*\{/);
   if (!tableWithLinksMatch) {
     throw new Error('Generated file missing links metadata.');
   }

@@ -38,6 +38,7 @@ type GeneratorConfig = {
   baseId: string;
   tableIds?: string[];
   viewIds?: string[];
+  optionalFields?: Record<string, string[]>;
 };
 
 type ParsedConfig = {
@@ -51,6 +52,7 @@ const BaseConfigSchema = z.object({
   base_id: z.string().trim().min(1),
   table_ids: z.array(z.string().trim().min(1)).optional(),
   view_ids: z.array(z.string().trim().min(1)).optional(),
+  optional_fields: z.record(z.array(z.string().trim().min(1))).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -105,6 +107,7 @@ const loadConfig = async (repoRoot: string, options: CliOptions): Promise<Parsed
           baseId: base.base_id,
           tableIds: base.table_ids && base.table_ids.length > 0 ? base.table_ids : undefined,
           viewIds: base.view_ids && base.view_ids.length > 0 ? base.view_ids : undefined,
+          optionalFields: base.optional_fields ?? undefined,
         }))
       : null;
 
@@ -546,6 +549,46 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     };
   });
 
+  const optionalTokens = config.optionalFields?.[table.id] ?? config.optionalFields?.[table.name];
+  const hasOptionalConfig = Array.isArray(optionalTokens);
+  const requiredFields = new Set<string>();
+  const optionalFields = new Set<string>();
+  const tokenMap = new Map<string, string>();
+  for (const field of fields) {
+    tokenMap.set(field.id, field.jsName);
+    tokenMap.set(field.originalName, field.jsName);
+    tokenMap.set(field.jsName, field.jsName);
+  }
+
+  if (hasOptionalConfig) {
+    for (const token of optionalTokens) {
+      const jsName = tokenMap.get(token);
+      if (!jsName) {
+        throw new Error(`Unknown optional field "${token}" for table "${table.name}" (${table.id})`);
+      }
+      optionalFields.add(jsName);
+    }
+    for (const field of fields) {
+      if (!optionalFields.has(field.jsName)) {
+        requiredFields.add(field.jsName);
+      }
+    }
+  }
+
+  const resolvedFields = fields.map((field) => {
+    if (!field.zodSpec) {
+      return field;
+    }
+    if (hasOptionalConfig) {
+      const shouldBeOptional = optionalFields.has(field.jsName);
+      return {
+        ...field,
+        zodSpec: { ...field.zodSpec, optional: shouldBeOptional },
+      };
+    }
+    return field;
+  });
+
   const links = [...linkedFieldMap.values()]
     .map((link) => {
       return `\n    ${link.jsName}: { tableId: '${escapeString(link.linkedTableId)}' },`;
@@ -557,23 +600,25 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     ? `\n\nexport const ${recordSchemaName} = z\n  .object({\n    id: z.string(),\n    fields: ${schemaName},\n  })\n  .strict();\n\nexport type ${finalItemName}Record = z.infer<typeof ${recordSchemaName}>;`
     : '';
   const recordSchemaField = options.includeRecordSchema ? `\n  recordSchema: ${recordSchemaName},` : '';
+  const requiredFieldsBlock =
+    requiredFields.size > 0
+      ? `\n  requiredFields: [${[...requiredFields].map((field) => `'${escapeString(field)}'`).join(', ')}],`
+      : '';
 
-  return `export const ${schemaName} = z.object({${fields.map(generateZodEntry).join('')}\n}).strict();\n\nexport type ${finalItemName} = z.infer<typeof ${schemaName}>;${recordSchemaBlock}\n\nexport const ${tableName} = {\n  name: '${escapeString(
+  return `export const ${schemaName} = z.object({${resolvedFields
+    .map(generateZodEntry)
+    .join(
+      '',
+    )}\n}).strict();\n\nexport type ${finalItemName} = z.infer<typeof ${schemaName}>;${recordSchemaBlock}\n\nexport const ${tableName} = {\n  name: '${escapeString(
     table.name,
   )}',\n  baseId: '${escapeString(config.baseId)}',\n  tableId: '${escapeString(
     table.id,
-  )}',\n  mappings: {${fields.map(generateMappingEntry).join('')}\n  },\n  schema: ${schemaName},${recordSchemaField}${linksBlock}\n} satisfies AirtableTableDefinition<${finalItemName}>;`;
+  )}',\n  mappings: {${resolvedFields.map(generateMappingEntry).join('')}\n  },${requiredFieldsBlock}\n  schema: ${schemaName},${recordSchemaField}${linksBlock}\n} satisfies AirtableTableDefinition<${finalItemName}>;`;
 };
 
 const generateHeader = (options: GenerateOptions): string => {
   const recordSchemaLines = options.includeRecordSchema
-    ? [
-        'export type AirtableRecord<T extends Record<string, unknown>> = {',
-        '  id: string;',
-        '  fields: T;',
-        '};',
-        '',
-      ]
+    ? ['export type AirtableRecord<T extends Record<string, unknown>> = {', '  id: string;', '  fields: T;', '};', '']
     : [];
   const parseRecordLines = options.includeRecordSchema
     ? [
@@ -600,6 +645,7 @@ const generateHeader = (options: GenerateOptions): string => {
     '  mappings: {',
     '    [K in keyof T]: T[K] extends Array<unknown> ? string | string[] : string;',
     '  };',
+    '  requiredFields?: Array<Extract<keyof T, string>>;',
     '  schema: z.ZodType<T>;',
     ...(options.includeRecordSchema ? ['  recordSchema: z.ZodType<AirtableRecord<T>>;'] : []),
     ...(options.includeLinks ? ['  links?: Record<string, { tableId: string }>;'] : []),
