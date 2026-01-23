@@ -112,6 +112,28 @@ const parsed = parseRecord(myTableTable, { id: record.id, fields: record.fields 
 const fields = parsed.fields; // fully typed
 ```
 
+## Using with airtool
+
+`airtool` can consume the generated table definitions directly for typed CRUD helpers:
+
+```ts
+import { createAirtableClient, pickFields } from 'airtool';
+import { myTableTable } from './airtable-types.js';
+
+const client = createAirtableClient({
+  apiKey: process.env.AIRTABLE_API_KEY!,
+  baseId: myTableTable.baseId!,
+});
+
+const table = client.table(myTableTable);
+const records = await table.fetchAllRecords({
+  fields: pickFields(myTableTable, 'primaryField', 'status'),
+});
+```
+
+If you set `required_fields` in `config.toml`, airtypes adds a `requiredFields` list per table, and airtool will always
+include those fields in typed list queries.
+
 ## Flags
 
 Common flags:
