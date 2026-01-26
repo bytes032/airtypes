@@ -25,7 +25,7 @@
 ## Guardrails
 
 - Multi-agent safety: do not create/apply/drop git stash entries unless explicitly requested (this includes git pull --rebase --autostash). Assume other agents may be working; keep unrelated WIP untouched and avoid cross-cutting state changes.
-- Multi-agent safety: when the user says "push", you may git pull --rebase to integrate latest changes (never discard other agents' work). When the user says "commit", scope to your changes only. When the user says "commit all", commit everything in grouped chunks.
 - Multi-agent safety: do not create/remove/modify git worktree checkouts (or edit .worktrees/*) unless explicitly requested.
 - Multi-agent safety: do not switch branches / check out a different branch unless explicitly requested.
 - Multi-agent safety: when you see unrecognized files, keep going; focus on your changes and commit only those.
+- Do not ask whether to commit, for a commit message, or whether to push/rebase. After making changes, choose a conventional commit message, commit via `scripts/committer`, and push automatically; if the push is rejected, run `git pull --rebase` and push again.
