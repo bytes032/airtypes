@@ -28,4 +28,5 @@
 - Multi-agent safety: do not create/remove/modify git worktree checkouts (or edit .worktrees/*) unless explicitly requested.
 - Multi-agent safety: do not switch branches / check out a different branch unless explicitly requested.
 - Multi-agent safety: when you see unrecognized files, keep going; focus on your changes and commit only those.
-- Do not ask whether to commit, for a commit message, or whether to push/rebase. After making changes, choose a conventional commit message, commit via `scripts/committer`, and push automatically; if the push is rejected, run `git pull --rebase` and push again.
+- Do not ask whether to commit or for a commit message. After making changes, choose a conventional commit message and commit via `scripts/committer`.
+- When the user says "push", you may git pull --rebase to integrate latest changes (never discard other agents' work), then push.
