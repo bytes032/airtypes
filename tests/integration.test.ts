@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import toml from '@iarna/toml';
@@ -7,6 +7,11 @@ import type { z } from 'zod';
 
 const rootDir = resolve(new URL('.', import.meta.url).pathname, '..');
 const configPath = resolve(rootDir, 'config.toml');
+
+if (!existsSync(configPath)) {
+  console.log('Skipping integration tests: config.toml not found.');
+  process.exit(0);
+}
 
 const run = async (): Promise<void> => {
   const rawConfig = readFileSync(configPath, 'utf8').trim();
