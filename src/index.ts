@@ -507,6 +507,16 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
       ? `\n  requiredFields: [${[...requiredFields].map((field) => `'${escapeString(field)}'`).join(', ')}],`
       : '';
 
+  const namedViewsEntry = config.namedViews?.[table.id] ?? config.namedViews?.[table.name];
+  let namedViewsBlock = '';
+  if (namedViewsEntry) {
+    const viewsConstName = escapeIdentifier(`${basePrefixCamel}${itemName}Views`);
+    const viewEntries = Object.entries(namedViewsEntry)
+      .map(([name, id]) => `\n  ${escapeIdentifier(name)}: '${escapeString(id)}',`)
+      .join('');
+    namedViewsBlock = `\n\nexport const ${viewsConstName} = {${viewEntries}\n} as const;`;
+  }
+
   return `export const ${schemaName} = z.object({${resolvedFields
     .map(generateZodEntry)
     .join(
@@ -515,7 +525,7 @@ const generateCode = (config: GeneratorConfig, table: AirtableTable, options: Ge
     table.name,
   )}',\n  baseId: '${escapeString(config.baseId)}',\n  tableId: '${escapeString(
     table.id,
-  )}',\n  mappings: {${resolvedFields.map(generateMappingEntry).join('')}\n  },${requiredFieldsBlock}\n  schema: ${schemaName},${recordSchemaField}${linksBlock}\n} satisfies AirtableTableDefinition<${finalItemName}>;`;
+  )}',\n  mappings: {${resolvedFields.map(generateMappingEntry).join('')}\n  },${requiredFieldsBlock}\n  schema: ${schemaName},${recordSchemaField}${linksBlock}\n} satisfies AirtableTableDefinition<${finalItemName}>;${namedViewsBlock}`;
 };
 
 const generateHeader = (options: GenerateOptions): string => {

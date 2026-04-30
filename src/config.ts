@@ -10,6 +10,7 @@ const BaseConfigSchema = z.object({
   table_ids: z.array(z.string().trim().min(1)).optional(),
   view_ids: z.array(z.string().trim().min(1)).optional(),
   required_fields: z.record(z.string(), z.array(z.string().trim().min(1))).optional(),
+  named_views: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -110,6 +111,7 @@ export const loadConfigFromOptions = async (
           tableIds: base.table_ids && base.table_ids.length > 0 ? base.table_ids : undefined,
           viewIds: base.view_ids && base.view_ids.length > 0 ? base.view_ids : undefined,
           requiredFields: base.required_fields ?? undefined,
+          namedViews: base.named_views ?? undefined,
         }))
       : null;
 

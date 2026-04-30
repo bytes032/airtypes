@@ -31,6 +31,7 @@ export type GeneratorConfig = {
   tableIds?: string[];
   viewIds?: string[];
   requiredFields?: Record<string, string[]>;
+  namedViews?: Record<string, Record<string, string>>;
 };
 
 export type ParsedConfig = {
