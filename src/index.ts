@@ -235,7 +235,8 @@ const zodSpecForAirtableType = (field: AirtableField): ZodSpec | null => {
         }
         return withOptional(innerSpec);
       }
-      throw new Error(`Invalid ${field.type} field (no options.result): ${field.id}`);
+      logger.warn(`Skipping ${field.type} field with no resolvable options.result: ${field.id}`);
+      return null;
     }
     default:
       logger.warn(`Could not convert Airtable type "${field.type}" to a Zod schema for field ${field.id}`);
