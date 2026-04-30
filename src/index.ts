@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
