@@ -1,6 +1,6 @@
 {
   "name": "airtypes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generate Zod schemas and TypeScript types from Airtable bases.",
   "license": "MIT",
   "type": "module",
@@ -25,7 +25,7 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "https://github.com/bytes032/airtypes.git"
+    "url": "git+https://github.com/bytes032/airtypes.git"
   },
   "bugs": {
     "url": "https://github.com/bytes032/airtypes/issues"
